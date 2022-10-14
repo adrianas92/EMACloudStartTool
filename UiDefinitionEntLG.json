@@ -1,0 +1,881 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+    "handler": "Microsoft.Azure.CreateUIDef",
+    "version": "0.1.2-preview",
+    "parameters": {
+        "config": {
+            "basics": { 
+                "description": "### Create a Windows Server VM running Intel Endpoint Management Assistant (Intel® EMA)  \n [Learn more about Intel® EMA](https://www.intel.com/content/www/us/en/support/articles/000056028/software/manageability-products.html). \n\n This template will create a virtual machine, install the first server in an Intel EMA distributed server architecture and perform minimal configuration.  It will acquire a free certificate from Let's Encrypt based on the FQDN assigned during the virtual machine creation. \n\n Questions about this template?  Check out the Intel EMA CloudStart tool for Azure Guide. \n\n[Intel® EMA CloudStart tool for Azure Guide](https://downloadmirror.intel.com/30201/Intel%20EMA%20Cloud%20Start%20Tool%20for%20Azure%202.0%20-%20%20Quick-Start%20Guide.pdf)."
+            }
+        },
+        "basics": [
+            {
+                "name": "vmName",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Virtual Machine name",
+                "toolTip": "The name of the Virtual Machine.",
+                "constraints": {
+                    "required": true,
+                    "regex": "^[a-z0-9-]{3,15}$",
+                    "validationMessage": "The VM Name must be between 3 and 10 characters long, all lower case and contain letters, numbers and hyphens only. Please use a unique string as this will be used for you Intel EMA instance."
+                }
+            },
+            {
+                "name": "adminUsername",
+                "type": "Microsoft.Compute.UserNameTextBox",
+                "label": "Username",
+                "toolTip": "Username for the virtual machine.",
+                "osPlatform": "Windows",
+                "constraints": {
+                    "required": true
+                }
+            },
+            {
+                "name": "adminPassword",
+                "type": "Microsoft.Common.PasswordBox",
+                "label": {
+                    "password": "VM Password",
+                    "confirmPassword": "Confirm password"
+                },
+                "toolTip": "Admin password for the virtual machine.",
+                "constraints": {
+                    "required": true,
+                    "regex": "^(?=.*[A-Z])(?=.*[.!@#$%^&*()-_=+])(?=.*[0-9])(?=.*[a-z]).{12,40}$",
+                    "validationMessage": "Password must be at least 12 characters long, and must contain upper case, lower case, number and symbol"
+                },
+                "options": {
+                    "hideConfirmation": false
+                },
+                "visible": true
+            },
+            {
+                "name": "vmSize",
+                "type": "Microsoft.Common.DropDown",
+                "label": "Size of Virtual Machine",
+                "toolTip": "Size of the virtual machine.",
+                "osPlatform": "Windows",
+                "defaultValue": "Manage up to 5000 devices",
+                "constraints": {
+                    "allowedValues": [
+                        {
+                            "label": "Manage up to 500 devices",
+                            "value": "Standard_D2s_v3"
+                        },
+                        {
+                            "label": "Manage up to 5000 devices",
+                            "value": "Standard_D4s_v3"
+                        }
+                    ],
+                    "required": true
+                },
+                "visible": true
+            },
+            {
+                "name": "optionSql",
+                "type": "Microsoft.Common.DropDown",
+                "label": "Database hosting option",
+                "toolTip": "Select the SQL option to host the Intel EMA database for this implementation.",
+                "defaultValue": "New or existing Azure SQL server resource",
+                "constraints": {
+                    "allowedValues": [
+                        {
+                            "label": "New or existing Azure SQL server resource",
+                            "value": "azureSql"
+                        },
+                        {
+                            "label": "Existing SQL server accesible to this VM",
+                            "value": "localSql"
+                        },
+                        {
+                            "label": "Deploy a new SQL installation on this VM",
+                            "value": "newSql"
+                        }
+                    ],
+                    "required": false
+                }
+            },
+            {
+                "name": "vmImageSku",
+                "type": "Microsoft.Common.DropDown",
+                "label": "OS Version of Virtual Machine",
+                "toolTip": "Choose the desired OS version of the virtual machine.",
+                "defaultValue": "[if(equals(basics('optionSql'), 'newSql'), 'Microsoft Windows Server 2019 Datacenter and SQL 2017', 'Microsoft Windows Server 2019 Datacenter')]",
+                "osPlatform": "Windows",
+                "constraints": {
+                    "allowedValues": [
+                        {
+                            "label": "[if(equals(basics('optionSql'), 'newSql'), 'Microsoft Windows Server 2019 Datacenter and SQL 2017', 'Microsoft Windows Server 2019 Datacenter')]",
+                            "value": "[if(equals(basics('optionSql'), 'newSql'), 'sql2017-ws2019', '2019-datacenter')]"
+                        },
+                        {
+                            "label": "[if(equals(basics('optionSql'), 'newSql'), 'Microsoft Windows Server 2022 Datacenter and SQL 2019', 'Microsoft Windows Server 2022 Datacenter')]",
+                            "value": "[if(equals(basics('optionSql'), 'newSql'), 'sql2019-ws2022', '2022-Datacenter')]"
+                        }
+                    ],
+                    "required": true
+                },
+                "visible": true
+            },
+            {
+                "name": "osversionwarningtext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": "[or(equals(basics('vmImageSku'), 'sql2019-ws2022'), equals(basics('vmImageSku'), '2022-Datacenter'))]",
+                "options": {
+                    "text":  "NOTE: Microsoft Windows Server 2022 is known to be fully functional however, full validation is ongoing as of this time."
+                }
+            },
+            {
+                "name": "allowRDP",
+                "type": "Microsoft.Common.TextBox",
+                "label": "RDP Access<br />(leave default if unsure)",
+                "toolTip": "127.0.0.1/32 effectively denies access from any public IP address source.  IP addresses must be in CIDR format.",
+                "defaultValue": "127.0.0.1/32",
+                "constraints": {
+                    "required": true,
+                    "validationMessage": "Specify IP address(es) to allow RDP access to the VM after creation."
+                }
+            },
+            {
+                "name": "vnet",
+                "type": "Microsoft.Network.VirtualNetworkCombo",
+                "label": {
+                    "virtualNetwork": "Virtual network",
+                    "subnets": "Subnets"
+                },
+                "toolTip": {
+                    "virtualNetwork": "",
+                    "subnets": ""
+                },
+                "defaultValue": {
+                    "name": "EMAvNET",
+                    "addressPrefixSize": "/22"
+                },
+                "constraints": {
+                    "minAddressPrefixSize": "/22"
+                },
+                "options": {
+                    "hideExisting": false,
+                    "hideCreateNew": true
+                },
+                "subnets": {
+                    "subnet1": {
+                         "label": "Subnet",
+                         "defaultValue": {
+                              "name": "Subnet",
+                              "addressPrefixSize": "/24"
+                         },
+                         "constraints": {
+                              "minAddressPrefixSize": "/24",
+                              "minAddressCount": 12,
+                              "requireContiguousAddresses": true
+                          }
+                     }
+                },
+                "visible": true
+            },
+            {
+                "name": "vnetwarningtext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "NOTE: If deploying to an existing vNET/Subnet with an existing security group, please add rules to allow inbound traffic to ports 80, 443 and 8080 in the security group applied to the subnet BEFORE deploying this template."
+                }
+            },
+            {
+                "name": "section1azureSql",
+                "type": "Microsoft.Common.Section",
+                "label": "Azure SQL resource options",
+                "visible": "[equals(basics('optionSql'), 'azureSql')]",
+                "elements": [
+                    {
+                        "name": "azureSqldescription",
+                        "type": "Microsoft.Common.TextBlock",
+                        "visible": true,
+                        "options": {
+                            "text":  "Select an existing Azure SQL server or create a new Azure SQL server.  Firewall rules for the existing Azure SQL server must be configured to allow access from this Azure resources."
+                        }
+                    },
+                    {
+                        "name": "azureSqlnotice",
+                        "type": "Microsoft.Common.TextBlock",
+                        "visible": true,
+                        "options": {
+                            "text":  "Please be aware that use of Azure SQL servers is a fully functional preview feature at this time.  Full validation for use with Intel EMA is ongoing."
+                        }
+                    },
+                    {
+                        "name": "sqlNewExist",
+                        "type": "Microsoft.Common.DropDown",
+                        "label": "New or use existing Azure SQL",
+                        "toolTip": "Create new or use existing Azure SQL resource during deployment.",
+                        "defaultValue": "[if(equals(basics('optionSql'), 'azureSql'), 'Create new Azure SQL resource', 'Use existing Azure SQL resource')]",
+                        "constraints": {
+                            "allowedValues": [
+                                {
+                                    "label": "Create new Azure SQL resource",
+                                    "value": "new"
+                                },
+                                {
+                                    "label": "Use existing Azure SQL resource",
+                                    "value": "existing"
+                                }
+                            ],
+                            "required": "[equals(basics('optionSql'), 'azureSql')]"
+                        },
+                        "visible": true
+                    },
+                    {
+                        "name": "administratorLogin",
+                        "type": "Microsoft.Common.TextBox",
+                        "label": "SQL Account",
+                        "toolTip": "SQL account for database creation and access.",
+                        "visible": true,
+                        "constraints": {
+                            "regex": "^[a-z0-9A-Z]{3,15}$",
+                            "required": "[equals(basics('optionSql'), 'azureSql')]",
+                            "validations": [
+                                {
+                                     "isValid": "[not(equals(basics('section1azureSql').administratorLogin, 'admin'))]",
+                                     "message": "Your login name must not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                                },
+                                {
+                                     "isValid": "[not(equals(basics('section1azureSql').administratorLogin, 'manager'))]",
+                                     "message": "Your login name must not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                                },
+                                {
+                                     "isValid": "[not(equals(basics('section1azureSql').administratorLogin, 'sa'))]",
+                                     "message": "Your login name must not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                                },
+                                {
+                                     "isValid": "[not(equals(basics('section1azureSql').administratorLogin, 'root'))]",
+                                     "message": "Your login name must not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                                },
+                                {
+                                     "isValid": "[not(equals(basics('section1azureSql').administratorLogin, 'dbmanager'))]",
+                                     "message": "Your login name must not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                                },
+                                {
+                                     "isValid": "[not(equals(basics('section1azureSql').administratorLogin, 'loginmanager'))]",
+                                     "message": "Your login name must not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                                },
+                                {
+                                     "isValid": "[not(equals(basics('section1azureSql').administratorLogin, 'dbo'))]",
+                                     "message": "Your login name must not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                                },
+                                {
+                                     "isValid": "[not(equals(basics('section1azureSql').administratorLogin, 'public'))]",
+                                     "message": "Your login name must not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                                },
+                                {
+                                     "isValid": "[not(equals(basics('section1azureSql').administratorLogin, 'guest'))]",
+                                     "message": "Your login name must not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                                },
+                                {
+                                     "isValid": "[not(equals(basics('section1azureSql').administratorLogin, 'administrator'))]",
+                                     "message": "Your login name must not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                                }
+                            ],
+                            "validationMessage": "Your login name must be at least 3 characters and not contain a SQL identifier or a typical system name (like admin, administrator, sa, root, dbmanager, loginmanager, etc.) or built-in database user or role (like dbo, guest, public, etc.)"
+                        }
+                    },
+                    {
+                        "name": "administratorLoginPassword",
+                        "type": "Microsoft.Common.PasswordBox",
+                        "label": {
+                            "password": "SQL account password",
+                            "confirmPassword": "Confirm SQL account password"
+                        },
+                        "toolTip": "Password for the SQL server account.",
+                        "constraints": {
+                            "required": "[equals(basics('optionSql'), 'azureSql')]",
+                            "regex": "^(?=.*[A-Z])(?=.*[.!@#$%^&*()-_=+])(?=.*[0-9])(?=.*[a-z]).{8,255}$",
+                            "validationMessage": "Password must be at least 8 characters long, and contain upper case, lower case, number and symbol"
+                        },
+                        "options": {
+                            "hideConfirmation": "[equals(basics('section1azureSql').sqlNewExist, 'existing')]"
+                        },
+                        "visible": true
+                    },
+                    {
+                        "name": "azureSqlexistingtext",
+                        "type": "Microsoft.Common.TextBlock",
+                        "visible": true,
+                        "options": {
+                            "text":  "[if(equals(basics('section1azureSql').sqlNewExist, 'new'), 'Select the box below and complete each of the field to customize the new Azure SQL resource.  It is highly recommended to accept the default SQL server name as it must be globally unique across all Azure resources.', 'Select the existing Azure SQL resource from the dropdown and optionally, customize the database name in the field below.')]"
+                        }
+                    },
+                    {
+                        "name": "autoSqlNames",
+                        "type": "Microsoft.Common.CheckBox",
+                        "label": "Select to specify SQL server name<br />(leave unchecked for auto-generated)",
+                        "visible": "[equals(basics('section1azureSql').sqlNewExist, 'new')]",
+                        "constraints": {
+                            "required": false,
+                            "validationMessage": "Select to customize SQL and database names."
+                        }
+                    },
+                    {
+                        "name": "serverNameNew",
+                        "type": "Microsoft.Common.TextBox",
+                        "label": "SQL server name<br/>(Server name must be unique)",
+                        "toolTip": "Name of the SQL server to be created.  Server name must be gloablly unique.  It is recommended to accept the default.",
+                        "defaultValue": "[concat('sql-', guid())]",
+                        "visible": "[bool(basics('section1azureSql').autoSqlNames)]",
+                        "constraints": {
+                            "required": "[bool(basics('section1azureSql').autoSqlNames)]",
+                            "regex": "^[a-z0-9A-Z-]{3,45}$",
+                            "validationMessage": "The SQL server name must be between 3 and 45 characters long and contain letters and numbers only."
+                        }
+                    },
+                    {
+                        "name": "serverNameExist",
+                        "type": "Microsoft.Solutions.ResourceSelector",
+                        "label": "SQL server name",
+                        "toolTip": "Name of the SQL server to use with Intel EMA.",
+                        "resourceType": "Microsoft.Sql/servers",
+                        "visible": "[equals(basics('section1azureSql').sqlNewExist, 'existing')]",
+                        "constraints": {
+                            "required": "[equals(basics('section1azureSql').sqlNewExist, 'existing')]",
+                            "validationMessage": "Please select a SQL server from the list or choose to create a new one."
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "section1localSql",
+                "type": "Microsoft.Common.Section",
+                "label": "Existing SQL server options",
+                "visible": "[equals(basics('optionSql'), 'localSql')]",
+                "elements": [
+                    {
+                        "name": "localSqldescription",
+                        "type": "Microsoft.Common.TextBlock",
+                        "visible": true,
+                        "options": {
+                            "text":  "Specify the connection parameters for an existing and accessible SQL server.  The SQL account used for installation must have sysadmin privileges for the duration of the install."
+                        }
+                    },
+                    {
+                        "name": "localSqlnotice",
+                        "type": "Microsoft.Common.TextBlock",
+                        "visible": true,
+                        "options": {
+                            "text":  "Complete each of the fields below to specify an existing SQL server for use with this Intel EMA deployment. NOTE: Performance may be impacted if utilizing a SQL server across a VPN connection."
+                        }
+                    },
+                    {
+                        "name": "localSqlFQDN",
+                        "type": "Microsoft.Common.TextBox",
+                        "label": "SQL Server FQDN",
+                        "toolTip": "The fully qualified domain name of the SQL for this Intel EMA implementation.",
+                        "defaultValue": "sql.domain.com",
+                        "visible": true,
+                        "constraints": {
+                            "required": "[equals(basics('optionSql'), 'localSql')]",
+                            "regex": "^(?=.*[.])[a-z0-9A-Z-.]{3,100}$",
+                            "validationMessage": "The SQL server fully qualified domain name must be between 3 and 100 characters long and contain letters, numbers, hyphens and periods only."
+                        }
+                    },
+                    {
+                        "name": "localSqlLogin",
+                        "type": "Microsoft.Common.TextBox",
+                        "label": "SQL Account",
+                        "toolTip": "Local SQL account for database creation and access.",
+                        "visible": true,
+                        "constraints": {
+                            "regex": "^[a-z0-9A-Z]{2,15}$",
+                            "required": "[equals(basics('optionSql'), 'localSql')]",
+                            "validations": [
+                                {
+                                    "isValid": "[not(equals(basics('section1localSql').localSqlLogin, 'hibidyjibidy'))]",
+                                    "message": "The login cannot be this value.  This validation is a placeholder for future use with one prohibited value and that was it."
+                                }
+                            ],
+                            "validationMessage": "Your login name must be at least 2 characters in length."
+                        }
+                    },
+                    {
+                        "name": "localSqlPassword",
+                        "type": "Microsoft.Common.PasswordBox",
+                        "label": {
+                            "password": "SQL account password",
+                            "confirmPassword": "Confirm SQL account password"
+                        },
+                        "toolTip": "Password for the SQL server account.",
+                        "constraints": {
+                            "required": "[equals(basics('optionSql'), 'localSql')]",
+                            "regex": "^(?=.*[A-Z])(?=.*[.!@#$%^&*()-_=+])(?=.*[0-9])(?=.*[a-z]).{8,255}$",
+                            "validationMessage": "Password must be at least 8 characters long, and contain upper case, lower case, number and symbol"
+                        },
+                        "options": {
+                            "hideConfirmation": true
+                        },
+                        "visible": true
+                    }
+                ]
+            },
+            {
+                "name": "section1newSql",
+                "type": "Microsoft.Common.Section",
+                "label": "New SQL server options",
+                "visible": "[equals(basics('optionSql'), 'newSql')]",
+                "elements": [
+                    {
+                        "name": "newSqlnotice",
+                        "type": "Microsoft.Common.TextBlock",
+                        "visible": true,
+                        "options": {
+                            "text":  "Select the license edition of SQL that will be deployed with this VM.  Please note that additional charges may apply based on the SQL edition selected below."
+                        }
+                    },
+                    {
+                        "name": "licenseSql",
+                        "type": "Microsoft.Common.DropDown",
+                        "label": "SQL License Edition:",
+                        "toolTip": "Select the SQL license option for use with this implementation of Intel EMA.",
+                        "defaultValue": "[if(equals(basics('vmImageSku'), 'sql2017-ws2019'), 'SQL Server Express', 'SQL Server Developer')]",
+                        "constraints": {
+                            "allowedValues": [
+                                {
+                                    "label": "[if(equals(basics('vmImageSku'), 'sql2017-ws2019'), 'SQL Server Express', 'SQL Server Developer')]",
+                                    "value": "[if(equals(basics('vmImageSku'), 'sql2017-ws2019'), 'express', 'sqldev')]"
+                                },
+                                {
+                                    "label": "SQL Server Standard",
+                                    "value": "standard"
+                                }
+                            ],
+                            "required": "[equals(basics('optionSql'), 'newSql')]"
+                        },
+                        "visible": true
+                    }
+                ]
+            },
+            {
+                "name": "sqlDBName",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Database name",
+                "toolTip": "Name of the database to be created.",
+                "defaultValue": "EMADatabase",
+                "visible": true,
+                "constraints": {
+                    "required": true,
+                    "regex": "^[-_a-z0-9A-Z]{3,15}$",
+                    "validationMessage": "The database name must be between 3 and 15 characters long and contain dashes, underscores, letters and numbers only."
+                }
+            },
+            {
+                "name": "newSqllicensenotice",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": "[equals(basics('section1newSql').licenseSql, 'standard')]",
+                "options": {
+                    "text":  "NOTE: There may be substantial fees associated with this SQL license.  Please refer to your agreement for details."
+                }
+            },
+            {
+                "name": "section2",
+                "type": "Microsoft.Common.Section",
+                "label": "Active Directory domain join parameters",
+                "elements": []
+            },
+            {
+                "name": "section2atext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "Select the box below and complete each of the fields to join the newly created virtual machine to an exsiting Active Directory infrastructure and use Active Directory authentication for Intel EMA."
+                }
+            },
+            {
+                "name": "section2btext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "The virtual network and subnet selected above in the \"Configure virtual networks\" section must be able to access your Active Directory infrastructure.  Specify the username in UPN format, the Active Directory domain to join and the DNS servers that can resolve the domain."
+                }
+            },
+            {
+                "name": "adJoin",
+                "type": "Microsoft.Common.CheckBox",
+                "label": "Join an Active Directory domain<br />(leave unchecked if not joining AD)",
+                "constraints": {
+                    "required": false,
+                    "validationMessage": "Select to join an Active Directory domain."
+                }
+            },
+            {
+                "name": "adUsername",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Active Directory account",
+                "defaultValue": "user@domain.com",
+                "toolTip": "Active Directory account with permissions to join computers to the domain.",
+                "visible": "[bool(basics('adJoin'))]",
+                "constraints": {
+                    "regex": "^(?=.*[.])[^@]+@[^@]+[^@]+$",
+                    "required": "[bool(basics('adJoin'))]",
+                    "validationMessage": "Username must be in UPN (user@domain.com) format."
+                }
+            },
+            {
+                "name": "adPassword",
+                "type": "Microsoft.Common.PasswordBox",
+                "label": {
+                    "password": "Active Directory password",
+                    "confirmPassword": "Confirm Active Directory password"
+                },
+                "toolTip": "Password for the Active Directory account.",
+                "constraints": {
+                    "required": "[bool(basics('adJoin'))]",
+                    "regex": "^(?=.*[A-Z])(?=.*[.!@#$%^&*()-_=+])(?=.*[0-9])(?=.*[a-z]).{8,255}$",
+                    "validationMessage": "Password must be at least 8 characters long, and must contain upper case, lower case, number and symbol"
+                },
+                "options": {
+                    "hideConfirmation": true
+                },
+                "visible": "[bool(basics('adJoin'))]"
+            },
+            {
+                "name": "adDomain",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Active Directory domain (UPN suffix)",
+                "toolTip": "Name of the Active Directory domain to join.",
+                "defaultValue": "domain.com",
+                "visible": "[bool(basics('adJoin'))]",
+                "constraints": {
+                    "required": "[bool(basics('adJoin'))]",
+                    "regex": "^(?=.*[.])[a-z0-9A-Z-.]{3,35}$",
+                    "validationMessage": "The Active Directory domain must be between 3 and 35 characters long and contain letters, numbers, hyphens and periods only."
+                }
+            },
+            {
+                "name": "adDNSpri",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Primary DNS",
+                "toolTip": "Primary DNS server for Active Directory clients.",
+                "defaultValue": "1.1.1.1",
+                "visible": "[bool(basics('adJoin'))]",
+                "constraints": {
+                    "required": "[bool(basics('adJoin'))]",
+                    "regex": "^[0-9]+.[0-9]+.[0-9]+.[0-9]{1,3}$",
+                    "validationMessage": "The primary DNS server must be a valid IP address of a DNS server for your Active Directory domain."
+                }
+            },
+            {
+                "name": "adDNSsec",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Secondary DNS",
+                "toolTip": "Secondary DNS server for Active Directory clients.",
+                "defaultValue": "1.1.1.2",
+                "visible": "[bool(basics('adJoin'))]",
+                "constraints": {
+                    "required": "[bool(basics('adJoin'))]",
+                    "regex": "^[0-9]+.[0-9]+.[0-9]+.[0-9]{1,3}$",
+                    "validationMessage": "The secondary DNS server must be a valid IP address of a DNS server for your Active Directory domain."
+                }
+            },
+            {
+                "name": "section3",
+                "type": "Microsoft.Common.Section",
+                "label": "Intel EMA configuration parameters",
+                "elements": []
+            },
+            {
+                "name": "section3btext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "If using Active Directory, the user accounts must exist before specifying below.  Accepting the defaults will re-use the Tenant Admin password for the Endpoint Group and Auto-Setup passwords.  Usernames must be specified in email address/UPN format."
+                }
+            },
+            {
+                "name": "section3b1text",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "For a description of each of the parameters required below, please review section 5 of the Intel EMA Quick Start Guide.",
+                    "link": {
+                        "label": "Intel EMA Quick Start Guide",
+                        "uri": "https://www.intel.com/content/dam/support/us/en/documents/software/manageability-products/intel-ema-quickstart-guide.pdf"
+                    }
+                }
+            },
+            {
+                "name": "section3b2text",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "Questions about this template?  Check out the Intel EMA CloudStart Tool for Azure Guide.",
+                    "link": {
+                        "label": "Intel EMA CloudStart Tool for Azure Guide",
+                        "uri": "https://downloadmirror.intel.com/30201/Intel%20EMA%20Cloud%20Start%20Tool%20for%20Azure%202.0%20-%20%20Quick-Start%20Guide.pdf"
+                    }
+                }
+            },
+            {
+                "name": "globalUsername",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Global Admin",
+                "toolTip": "Active Directory account to use as the Intel EMA Global Administrator account OR create a normal account if not joining an Active Directory domain.",
+                "constraints": {
+                    "regex": "^(?=.*[.])[^@]+@[^@]+[^@]+$",
+                    "required": true,
+                    "validationMessage": "Username must be in UPN/email address (user@domain.com) format."
+                }
+            },
+            {
+                "name": "globalPassword",
+                "type": "Microsoft.Common.PasswordBox",
+                "label": {
+                    "password": "Global admin password",
+                    "confirmPassword": "Confirm Global admin password"
+                },
+                "toolTip": "Password for the Intel EMA Global Administrator account.",
+                "constraints": {
+                    "required": true,
+                    "regex": "^(?!@)(?!.*\\@$)(?=.*[A-Z])(?=.*[.!@#$%^&*()-_=+])(?=.*[0-9])(?=.*[a-z]).{8,255}$",
+                    "validationMessage": "Password must be at least 8 characters long, and contain upper case, lower case, number and symbol.  Some special characters are not permitted to begin or end the password."
+                },
+                "options": {
+                    "hideConfirmation": "[bool(basics('adJoin'))]"
+                },
+                "visible": true
+            },
+            {
+                "name": "tenantUsername",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Tenant Admin",
+                "toolTip": "Active Directory account to use as the Intel EMA Tenant Administrator account OR create a normal account if not joining an Active Directory domain.",
+                "constraints": {
+                    "regex": "^(?=.*[.])[^@]+@[^@]+[^@]+$",
+                    "required": true,
+                    "validations": [
+                        {
+                             "isValid": "[not(equals(basics('tenantUsername'), basics('globalUsername')))]",
+                             "message": "Global and Tenant admin usernames must be different."
+                        }
+                    ],
+                    "validationMessage": "Username must be in UPN/email address (user@domain.com) format."
+                }
+            },
+            {
+                "name": "tenantPassword",
+                "type": "Microsoft.Common.PasswordBox",
+                "label": {
+                    "password": "Tenant admin password",
+                    "confirmPassword": "Confirm Tenant admin password"
+                },
+                "toolTip": "Password for the Intel EMA Tenant Administrator account.",
+                "constraints": {
+                    "required": true,
+                    "regex": "^(?!@)(?!.*\\@$)(?=.*[A-Z])(?=.*[.!@#$%^&*()-_=+])(?=.*[0-9])(?=.*[a-z]).{8,255}$",
+                    "validationMessage": "Password must be at least 8 characters long, and contain upper case, lower case, number and symbol.  Some special characters are not permitted to begin or end the password."
+                },
+                "options": {
+                    "hideConfirmation": "[bool(basics('adJoin'))]"
+                },
+                "visible": true
+            },
+            {
+                "name": "section3atext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "Select the box below and complete each of the fields to customize additional Intel EMA configuration parameters."
+                }
+            },
+            {
+                "name": "emaDefaults",
+                "type": "Microsoft.Common.CheckBox",
+                "label": "Customize configuration parameters<br />(leave unchecked to accept defaults)",
+                "constraints": {
+                    "required": false,
+                    "validationMessage": "Select to specify additional parameters."
+                }
+            },
+            {
+                "name": "tenantName",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Tenant Name",
+                "toolTip": "Name of the tenant to be created.",
+                "defaultValue": "Default Tenant",
+                "visible": "[bool(basics('emaDefaults'))]",
+                "constraints": {
+                    "required": "[bool(basics('emaDefaults'))]",
+                    "regex": "^[a-z0-9A-Z- ]{3,35}$",
+                    "validationMessage": "The Tenant Name must be between 3 and 35 characters long and contain letters, numbers, spaces and hyphens only."
+                }
+            },
+            {
+                "name": "epgName",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Endpoint Group Name",
+                "toolTip": "Name of the endpoint group to be created.",
+                "defaultValue": "Default Endpoint Group",
+                "visible": "[bool(basics('emaDefaults'))]",
+                "constraints": {
+                    "required": "[bool(basics('emaDefaults'))]",
+                    "regex": "^[a-z0-9A-Z- ]{3,35}$",
+                    "validationMessage": "The Endpoint Group Name must be between 3 and 35 characters long and contain letters, numbers, spaces and hyphens only."
+                }
+            },
+            {
+                "name": "epgPassword",
+                "type": "Microsoft.Common.PasswordBox",
+                "label": {
+                    "password": "Endpoint group password",
+                    "confirmPassword": "Confirm Endpoint group password"
+                },
+                "toolTip": "Password for the Intel EMA Endpoint group.",
+                "constraints": {
+                    "required": "[bool(basics('emaDefaults'))]",
+                    "regex": "^(?!@)(?!.*\\@$)(?=.*[A-Z])(?=.*[.!@#$%^&*()-_=+])(?=.*[0-9])(?=.*[a-z]).{8,255}$",
+                    "validationMessage": "Password must be at least 8 characters long, and contain upper case, lower case, number and symbol.  Some special characters are not permitted to begin or end the password."
+                },
+                "options": {
+                    "hideConfirmation": false
+                },
+                "visible": "[bool(basics('emaDefaults'))]"
+            },
+            {
+                "name": "profileName",
+                "type": "Microsoft.Common.TextBox",
+                "label": "AMT Profile Name",
+                "toolTip": "Name of the AMT profile to be created.",
+                "defaultValue": "Default AMT Profile",
+                "visible": "[bool(basics('emaDefaults'))]",
+                "constraints": {
+                    "required": "[bool(basics('emaDefaults'))]",
+                    "regex": "^[a-z0-9A-Z- ]{3,35}$",
+                    "validationMessage": "The AMT Profile Name must be between 3 and 35 characters long and contain letters, numbers, spaces and hyphens only."
+                }
+            },
+            {
+                "name": "autoPassword",
+                "type": "Microsoft.Common.PasswordBox",
+                "label": {
+                    "password": "Autosetup password",
+                    "confirmPassword": "Confirm Autosetup password"
+                },
+                "toolTip": "Password for the Intel EMA Endpoint group autosetup function.",
+                "constraints": {
+                    "required": "[bool(basics('emaDefaults'))]",
+                    "regex": "^(?!@)(?!.*\\@$)(?=.*[A-Z])(?=.*[.!@#$%^&*()-_=+])(?=.*[0-9])(?=.*[a-z]).{8,255}$",
+                    "validationMessage": "Password must be at least 8 characters long, and contain upper case, lower case, number and symbol.  Some special characters are not permitted to begin or end the password."
+                },
+                "options": {
+                    "hideConfirmation": false
+                },
+                "visible": "[bool(basics('emaDefaults'))]"
+            },
+            {
+                "name": "emaCustomtext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "Select the checkbox below to customize the Intel EMA fully qualified domain name.  This option is necessary if load balancing will be used in a distributed architecture, use of a custom domain named is desired, etc."
+                }
+            },
+            {
+                "name": "emaCustom",
+                "type": "Microsoft.Common.CheckBox",
+                "label": "Customize the Intel EMA FQDN<br />(leave unchecked if using VM FQDN)",
+                "visible": true,
+                "constraints": {
+                    "required": false,
+                    "validationMessage": "Select to customize the Intel EMA FQDN."
+                }
+            },
+            {
+                "name": "section4emacustom",
+                "type": "Microsoft.Common.Section",
+                "label": "Intel EMA Custom FQDN",
+                "visible": "[bool(basics('emaCustom'))]", 
+                "elements": [
+                    {
+                        "name": "emaCustomFQDNwarnA",
+                        "type": "Microsoft.Common.TextBlock",
+                        "visible": true,
+                        "options": {
+                            "text":  "NOTE: The FQDN specified below must be publicly resolvable prior to deploying this template.  This can be accomplished by creating a CNAME record that points to the resulting Azure public name.  For example, if the VM name is \u201Cema\u201C and it was created in the East US region, the FQDN CNAME record would point to \u201Cema.eastus.cloudapp.azure.com\u201C"
+                        }
+                    },
+                    {
+                        "name": "emaFQDN",
+                        "type": "Microsoft.Common.TextBox",
+                        "label": "Intel EMA FQDN",
+                        "toolTip": "The fully qualified domain name of the Intel EMA implementation.",
+                        "defaultValue": "ema.domain.com",
+                        "visible": true,
+                        "constraints": {
+                            "required": "[bool(basics('emaCustom'))]",
+                            "regex": "^(?=.*[.])[a-z0-9A-Z-.]{3,35}$",
+                            "validationMessage": "The Intel EMA fully qualified domain name must be between 3 and 35 characters long and contain letters, numbers, hyphens and periods only."
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "section5",
+                "type": "Microsoft.Common.Section",
+                "label": "License Agreements",
+                "elements": []
+            },
+            {
+                "name": "eulaAccept",
+                "type": "Microsoft.Common.CheckBox",
+                "label": "*By using this tool, you agree to all applicable license agreements.",
+                "constraints": {
+                    "required": true,
+                    "validationMessage": "Please select the checkbox to signify agreement."
+                }
+            }
+        ],
+        "steps": [
+            {
+               
+            }
+        ],
+        "outputs": {
+            "location": "[location()]",
+            "vmName": "[basics('vmName')]",
+            "adminUsername": "[basics('adminUsername')]",
+            "adminPassword": "[basics('adminPassword')]",
+            "vmSize": "[basics('vmSize')]",
+            "vmImageSku": "[basics('vmImageSku')]",
+            "globalUsername": "[basics('globalUsername')]",
+            "globalPassword": "[basics('globalPassword')]",
+            "tenantUsername": "[basics('tenantUsername')]",
+            "tenantPassword": "[basics('tenantPassword')]",
+            "tenantName": "[basics('tenantName')]",
+            "epgName": "[basics('epgName')]",
+            "epgPassword": "[basics('epgPassword')]",
+            "profileName": "[basics('profileName')]",
+            "autoPassword": "[basics('autoPassword')]",
+            "virtualNetworkName": "[basics('vnet').name]",
+            "virtualNetworkNewOrExisting": "[basics('vnet').newOrExisting]",
+            "virtualNetworkAddressPrefix": "[first(basics('vnet').addressPrefixes)]",
+            "virtualNetworkResourceGroup": "[basics('vnet').resourceGroup]",
+            "subnetName": "[basics('vnet').subnets.subnet1.name]",
+            "subnetAddressPrefix": "[basics('vnet').subnets.subnet1.addressPrefix]",
+            "emaCustom": "[basics('emaCustom')]",
+            "emaFQDN": "[basics('section4emacustom').emaFQDN]",
+            "adJoin": "[basics('adJoin')]",
+            "adUsername": "[basics('adUsername')]",
+            "adPassword": "[basics('adPassword')]",
+            "adDomain": "[basics('adDomain')]",
+            "adDNSpri": "[basics('adDNSpri')]",
+            "adDNSsec": "[basics('adDNSsec')]",
+            "administratorLogin": "[if(equals(basics('optionSql'), 'azureSql'), basics('section1azureSql').administratorLogin, basics('section1localSql').localSqlLogin)]",
+            "administratorLoginPassword": "[if(equals(basics('optionSql'), 'azureSql'), basics('section1azureSql').administratorLoginPassword, basics('section1localSql').localSqlPassword)]",
+            "serverNameNew": "[if(bool(basics('section1azureSql').autoSqlNames), basics('section1azureSql').serverNameNew, concat('sql-', guid()))]",
+            "serverNameExist": "[if(equals(basics('optionSql'), 'azureSql'), basics('section1azureSql').serverNameExist.name, basics('section1localSql').localSqlFQDN)]",
+            "sqlDBName": "[basics('sqlDBName')]",
+            "sqlNewExist": "[basics('section1azureSql').sqlNewExist]",
+            "azureSql": "[if(equals(basics('optionSql'), 'azureSql'), true, false)]",
+            "localSql": "[if(equals(basics('optionSql'), 'localSql'), true, false)]",
+            "newSql": "[if(equals(basics('optionSql'), 'newSql'), true, false)]",
+            "licenseSql": "[basics('section1newSql').licenseSql]",
+            "allowRDP": "[basics('allowRDP')]"
+        }
+    }
+}

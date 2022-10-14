@@ -1,0 +1,375 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vmName": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the virtual machine. Please use a unique name as this will be used as you Intel EMA instance."
+            }
+        },
+        "adminUsername": {
+            "type": "string",
+            "metadata": {
+                "description": "Username for the virtual machine."
+            }
+        },
+        "adminPassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Admin Password for the virtual machine."
+            }
+        },
+        "vmSize": {
+            "type": "string",
+            "defaultValue": "Standard_D2s_v3",
+            "metadata": {
+                "description": "Size of the virtual machine."
+            }
+        },
+        "vmImageSku": {
+            "type": "string",
+            "defaultValue": "sql2017-ws2019",
+            "metadata": {
+                "description": "OV version of the virtual machine."
+            }
+        },
+        "globalUsername": {
+            "type": "string",
+            "metadata": {
+                "description": "Username for the Intel EMA Global Administrator account"
+            }
+        },
+        "globalPassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Password for the Intel EMA Global Administrator account."
+            }
+        },
+        "tenantUsername": {
+            "type": "string",
+            "metadata": {
+                "description": "Username for the Intel EMA Tenant Administrator account"
+            }
+        },
+        "tenantName": {
+            "type": "string",
+            "defaultValue": "Default Tenant",
+            "metadata": {
+                "description": "Name of the tenant to be created"
+            }
+        },
+        "epgName": {
+            "type": "string",
+            "defaultValue": "Default Endpoint Group",
+            "metadata": {
+                "description": "Name of the Endpoint Group to be created"
+            }
+        },
+        "profileName": {
+            "type": "string",
+            "defaultValue": "Default AMT Profile",
+            "metadata": {
+                "description": "Name of AMT Profile to be created"
+            }
+        }
+     },
+    "functions": [],
+    "variables": {
+        "nicName": "[concat(parameters('vmName'), 'VMNic')]",
+        "dnsLabelName": "[parameters('vmName')]",
+        "publicIpName": "[concat(parameters('vmName'), 'publicIpAddress')]",
+        "publicIpAddressSku": "Basic",
+        "imageOffer": "[parameters('vmImageSku')]",
+        "sqlSku": "[if(equals(parameters('vmImageSku'), 'sql2019-ws2022'), 'sqldev', 'express')]",
+        "sqlDataDisksCount": 1,
+        "sqllogDisksCount": 1,
+        "dataDisks": {
+            "createOption": "empty",
+            "caching": "ReadOnly",
+            "writeAcceleratorEnabled": false,
+            "storageAccountType": "StandardSSD_LRS",
+            "diskSizeGB": 32
+        },
+        "addressPrefix": "10.0.0.0/16",
+        "subnetName": "Subnet",
+        "virtualNetworkName": "MyVNET",
+        "subnetRef": "[resourceId('Microsoft.Network/VirtualNetworks/subnets', variables('virtualNetworkName'), variables('subnetName'))]",
+        "networkSecurityGroupName": "default-NSG"
+    },
+    "resources": [
+        
+        {
+            "name": "[variables('nicName')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2019-11-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "[variables('nicName')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipConfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIpName'))]"
+                            },
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('publicIpName')]",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2019-11-01",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "[variables('publicIpAddressSku')]"
+            },
+            "tags": {
+                "displayName": "PublicIpAddress"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[variables('dnsLabelName')]"
+                }
+            }
+        },
+        {
+            "name": "[variables('virtualNetworkName')]",
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2019-11-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
+            ],
+            "tags": {
+                "displayName": "[variables('virtualNetworkName')]"
+            },
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('addressPrefix')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "[variables('subnetName')]",
+                        "properties": {
+                            "addressPrefix": "10.0.0.0/24",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2019-07-01",
+            "name": "[parameters('vmName')]",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces/', variables('nicName'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "storageProfile": {
+                    "osDisk": {
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Standard_LRS"
+                        }
+                    },
+                    "imageReference":{
+                        "publisher": "microsoftsqlserver",
+                        "offer": "[variables('imageOffer')]",
+                        "sku": "[variables('sqlSku')]",
+                        "version": "latest"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[parameters('vmName')]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "[parameters('adminPassword')]",
+                    "windowsConfiguration": {
+                        "enableAutomaticUpdates": true,
+                        "provisionVMAgent": true
+                    }
+                }
+            }
+        },
+        {
+            "name": "[variables('networkSecurityGroupName')]",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2019-11-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "Port443IB",
+                        "properties": {
+                            "description": "Port 443 Inbound",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "Port443OB",
+                        "properties": {
+                            "description": "Port 443 Outbound",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 110,
+                            "direction": "Outbound"
+                        }
+                    },
+                    {
+                        "name": "Port80",
+                        "properties": {
+                            "description": "Port 80",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "80",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 102,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "Port8080",
+                        "properties": {
+                            "description": "Port 8080",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "8080",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 103,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "Port8084",
+                        "properties": {
+                            "description": "Websocket",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "8084",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 120,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+        "type": "Microsoft.Compute/virtualMachines/extensions",
+        "name": "[concat(parameters('vmName'),'/InstallEMA')]",
+        "apiVersion": "2019-12-01",
+        "location": "[resourceGroup().location]",
+        "dependsOn": [
+            "[resourceId('Microsoft.Compute/virtualMachines', parameters('vmName'))]"
+        ],
+        "properties": {
+            "publisher": "Microsoft.Powershell",
+            "type": "DSC",
+            "typeHandlerVersion": "2.19",
+            "autoUpgradeMinorVersion": true,
+            "settings": {
+            "ModulesUrl": "https://emacloudstart.z13.web.core.windows.net/EMAInstall.zip",
+            "ConfigurationFunction": "EMAInstall.ps1\\EMAInstall",
+            "Properties": {
+                        "hostname": "[reference(variables('publicIpName')).dnsSettings.fqdn]",
+                        "vmName": "[parameters('vmName')]",
+                        "tenantName": "[parameters('tenantName')]",
+                        "adJoin": false,
+                        "adDomain": "nodoamin.com",
+                        "adDNSpri": "1.1.1.1",
+                        "adDNSsec": "1.1.1.2",
+                        "serverName": "localhost",
+                        "sqlDBName": "EMADatabase",
+			"templateEdition": "simple",
+                        "epgCred": {
+                            "userName": "[parameters('epgName')]",
+                            "password": "PrivateSettingsRef:globalPw"
+                        },
+                        "autoCred": {
+                            "userName": "[parameters('profileName')]",
+                            "password": "PrivateSettingsRef:globalPw"
+                        },
+                        "globalCred": {
+                            "userName": "[parameters('globalUsername')]",
+                            "password": "PrivateSettingsRef:globalPw"
+                        },
+                        "adCred": {
+                            "userName": "nouser@nodomain.com",
+                            "password": "PrivateSettingsRef:globalPw"
+                        },
+                        "tenantCred": {
+                            "userName": "[parameters('tenantUsername')]",
+                            "password": "PrivateSettingsRef:globalPw"
+                        },
+                        "sqlCred": {
+                            "userName": "sa",
+                            "password": "PrivateSettingsRef:globalPw"
+                        },
+                        "adminCred": {
+                            "userName": "[parameters('adminUsername')]",
+                            "password": "PrivateSettingsRef:adminPw"
+                        }
+                    }
+            },
+            "protectedSettings": {
+                "Items": {
+                    "globalPw":"[parameters('globalPassword')]", 
+                    "adminPw":"[parameters('adminPassword')]"
+                }
+            }
+         }
+    }
+    ],
+    "outputs": {
+        "hostname": {
+            "type": "string",
+            "value": "[reference(variables('publicIpName')).dnsSettings.fqdn]"
+        }
+    }
+}

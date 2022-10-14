@@ -1,0 +1,267 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+    "handler": "Microsoft.Azure.CreateUIDef",
+    "version": "0.1.2-preview",
+    "parameters": {
+        "config": {
+            "basics": { 
+                "description": "### Create a VM running Intel Endpoint Management Assistant (Intel® EMA)  \n [Learn more about Intel® EMA](https://www.intel.com/content/www/us/en/support/articles/000056028/software/manageability-products.html). \n\n This template will create a virtual machine, install the first server in an Intel EMA distributed server architecture and perform minimal configuration.  It will acquire a free certificate from Let's Encrypt based on the FQDN assigned during the virtual machine creation. \n\n Questions about this template?  Check out the Intel EMA CloudStart tool for Azure Guide. \n\n[Intel® EMA CloudStart tool for Azure Guide](https://downloadmirror.intel.com/30201/Intel%20EMA%20Cloud%20Start%20Tool%20for%20Azure%202.0%20-%20%20Quick-Start%20Guide.pdf)."
+            }
+        },
+        "basics": [
+            {
+                "name": "vmName",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Virtual Machine name",
+                "toolTip": "The name of the Virtual Machine.",
+                "constraints": {
+                    "required": true,
+                    "regex": "^[a-z0-9-]{3,15}$",
+                    "validationMessage": "The VM Name must be between 3 and 10 characters long, all lower case and contain letters, numbers and hyphens only. Please use a unique string as this will be used for you Intel EMA instance."
+                }
+            },
+            {
+                "name": "adminUsername",
+                "type": "Microsoft.Compute.UserNameTextBox",
+                "label": "Username",
+                "toolTip": "Username for the virtual machine.",
+                "osPlatform": "Windows",
+                "constraints": {
+                    "required": true
+                }
+            },
+            {
+                "name": "adminPassword",
+                "type": "Microsoft.Common.PasswordBox",
+                "label": {
+                    "password": "VM Password",
+                    "confirmPassword": "Confirm password"
+                },
+                "toolTip": "Admin password for the virtual machine.",
+                "constraints": {
+                    "required": true,
+                    "regex": "^(?=.*[A-Z])(?=.*[.!@#$%^&*()-_=+])(?=.*[0-9])(?=.*[a-z]).{12,40}$",
+                    "validationMessage": "Password must be at least 12 characters long, and contain upper case, lower case, number and symbol"
+                },
+                "options": {
+                    "hideConfirmation": false
+                },
+                "visible": true
+            },
+            {
+                "name": "additionalParams",
+                "type": "Microsoft.Common.CheckBox",
+                "label": "Additional VM parameters",
+                "toolTip": "Change the size of the virtual machine as well as the desire OS version to deploy.",  
+                "constraints": {
+                    "required": false,
+                    "validationMessage": "Select to reveal additional parameters."
+                }
+            },
+            {
+                "name": "vmSize",
+                "type": "Microsoft.Common.DropDown",
+                "label": "Size of Virtual Machine",
+                "toolTip": "Size of the virtual machine.",
+                "osPlatform": "Windows",
+                "defaultValue": "Manage up to 500 devices",
+                "constraints": {
+                    "allowedValues": [
+                        {
+                            "label": "Manage up to 500 devices",
+                            "value": "Standard_D2s_v3"
+                        },
+                        {
+                            "label": "Manage up to 5000 devices",
+                            "value": "Standard_D4s_v3"
+                        }
+                    ],
+                    "required": true
+                },
+                "visible": "[bool(basics('additionalParams'))]"
+            },
+            {
+                "name": "vmImageSku",
+                "type": "Microsoft.Common.DropDown",
+                "label": "OS Version of Virtual Machine",
+                "toolTip": "Choose the desired OS version of the virtual machine.",
+                "osPlatform": "Windows",
+                "defaultValue": "Microsoft Windows Server 2019 Datacenter",
+                "constraints": {
+                    "allowedValues": [
+                        {
+                            "label": "Microsoft Windows Server 2019 Datacenter",
+                            "value": "sql2017-ws2019"
+                        },
+                        {
+                            "label": "Microsoft Windows Server 2022 Datacenter",
+                            "value": "sql2019-ws2022"
+                        }
+                    ],
+                    "required": true
+                },
+                "visible": "[bool(basics('additionalParams'))]"
+            },
+            {
+                "name": "osversionwarningtext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": "[equals(basics('vmImageSku'), 'sql2019-ws2022')]",
+                "options": {
+                    "text":  "NOTE: Full validation for Microsoft Windows Server 2022 has not yet been completed."
+                }
+            },
+            {
+                "name": "section1",
+                "type": "Microsoft.Common.Section",
+                "label": "Intel EMA configuration parameters",
+                "elements": []
+            },
+            {
+                "name": "section1atext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "Specify the Intel EMA configuration parameters below."
+                }
+            },
+            {
+                "name": "section1btext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "The password specified below will be used for the Global and Tenant admin accounts as well as the Endpoint group and Auto-Setup.  These can be changed after the deployment has completed via your Intel EMA administration web portal."
+                }
+            },
+            {
+                "name": "globalUsername",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Global Administrator username",
+                "toolTip": "Email for Intel EMA Global Administrator account.",
+                "constraints": {
+                    "regex": "^[^@]+@[^@]+[^@]+$",
+                    "required": true,
+                    "validationMessage": "Username must be in email address format and Global/Tenant admin usernames must be different."
+                }
+            },
+            {
+                "name": "tenantUsername",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Tenant Administrator username",
+                "toolTip": "Email for Intel EMA Tenant Administrator account.",
+                "constraints": {
+                    "regex": "^[^@]+@[^@]+[^@]+$",
+                    "required": true,
+                    "validations": [
+                        {
+                             "isValid": "[not(equals(basics('tenantUsername'), basics('globalUsername')))]",
+                             "message": "Global and Tenant admin usernames must be different."
+                        }
+                    ],
+                    "validationMessage": "Username must be in email address format and Global/Tenant admin usernames must be different."
+                }
+            },
+            {
+               "name": "globalPassword",
+               "type": "Microsoft.Common.PasswordBox",
+               "label": {
+                    "password": "Intel EMA password",
+                    "confirmPassword": "Confirm Intel EMA password"
+                },
+                "toolTip": "Password for the Intel EMA Global and Tenant Administrator account as well Autosetup and Endpoint Group.",
+                "constraints": {
+                    "required": true,
+                    "regex": "^(?!@)(?!.*\\@$)(?=.*[A-Z])(?=.*[.!@#$%^&*()-_=+])(?=.*[0-9])(?=.*[a-z]).{8,255}$",
+                    "validationMessage": "Password must be at least 8 characters long, and contain upper case, lower case, number and symbol.  Some special characters cannot be used at the beginning or end of the password."
+                },
+                "options": {
+                    "hideConfirmation": false
+                },
+                "visible": true
+            },
+            {
+                "name": "section1ctext",
+                "type": "Microsoft.Common.TextBlock",
+                "visible": true,
+                "options": {
+                    "text":  "Select the checkbox below if you'd like to customize some of the deployment parameters otherwise, default values will be used."
+                }
+            },
+            {
+                "name": "emaCustom",
+                "type": "Microsoft.Common.CheckBox",
+                "label": "Customize Intel EMA parameters",
+                "constraints": {
+                    "required": false,
+                    "validationMessage": "Select the checkbox to customize additional parameters."
+                }
+            },
+            {
+                "name": "tenantName",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Tenant Name",
+                "toolTip": "Name of the tenant to be created.",
+                "defaultValue": "Default Tenant",
+                "visible": "[bool(basics('emaCustom'))]",
+                "constraints": {
+                    "required": true,
+                    "regex": "^[a-z0-9A-Z- ]{3,35}$",
+                    "validationMessage": "The Tenant Name must be between 3 and 35 characters long and contain letters, numbers, spaces and hyphens only."
+                }
+            },
+            {
+                "name": "epgName",
+                "type": "Microsoft.Common.TextBox",
+                "label": "Endpoint Group Name",
+                "toolTip": "Name of the endpoint group to be created.",
+                "defaultValue": "Default Endpoint Group",
+                "visible": "[bool(basics('emaCustom'))]",
+                "constraints": {
+                   "required": true,
+                   "regex": "^[a-z0-9A-Z- ]{3,35}$",
+                   "validationMessage": "The Endpoint Group Name must be between 3 and 35 characters long and contain letters, numbers, spaces and hyphens only."
+                }
+            },
+            {
+                "name": "profileName",
+                "type": "Microsoft.Common.TextBox",
+                "label": "AMT Profile Name",
+                "toolTip": "Name of the AMT profile to be created.",
+                "defaultValue": "Default AMT Profile",
+                "visible": "[bool(basics('emaCustom'))]",
+                "constraints": {
+                    "required": true,
+                    "regex": "^[a-z0-9A-Z- ]{3,35}$",
+                    "validationMessage": "The AMT Profile Name must be between 3 and 35 characters long and contain letters, numbers, spaces and hyphens only."
+                }
+            },
+            {
+                "name": "eulaAccept",
+                "type": "Microsoft.Common.CheckBox",
+                "label": "*By using this tool, you agree to all applicable license agreements.",
+                "constraints": {
+                    "required": true,
+                    "validationMessage": "Please select the checkbox to signify agreement."
+                }
+            }
+        ],
+        "steps": [
+            {
+               
+            }
+        ],
+        "outputs": {
+            "location": "[location()]",
+            "vmName": "[basics('vmName')]",
+            "adminUsername": "[basics('adminUsername')]",
+            "adminPassword": "[basics('adminPassword')]",
+            "vmSize": "[basics('vmSize')]",
+            "vmImageSku": "[basics('vmImageSku')]",
+            "globalUsername": "[basics('globalUsername')]",
+            "globalPassword": "[basics('globalPassword')]",
+            "tenantUsername": "[basics('tenantUsername')]",
+            "tenantName": "[basics('tenantName')]",
+            "epgName": "[basics('epgName')]",
+            "profileName": "[basics('profileName')]"
+        }
+    }
+}
