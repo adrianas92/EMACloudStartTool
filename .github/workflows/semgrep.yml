@@ -34,11 +34,11 @@ jobs:
     with:
       # (Required) Please insert the runner group for your project
       # Example: runner-group: 'innersource.prod.amr.dind'
-      runner-group: ''
+      runner-group: 'innersource.prod.amr.dind'
       # (Optional) Please insert the IAPM ID of the application here
       # If you have more than 1 IAPM ID, please separate them with a comma
       # If at least 1 ID has not been entered the auto-tagging feature will not work
-      iapm-ids: ''
+      iapm-ids: '31946'
       # (Optional) Please insert the branch that should be tagged as "prod"
       prod-branch: ''
       # (Optional) Please indicate if this should be calculated for ASPN scoring entering true
